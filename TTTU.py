@@ -2,18 +2,17 @@ import math
 import discord
 from discord.ext import commands
 
-
-# TODO: bot settings:
-# TODO: 1) element selection (bg, x, o)
-# TODO: 2) for field larger than 3x3 - "fog of war"
-
 # TODO: main funcsions:
 # TODO: 1) grid creation - DONE
 # TODO: 2) x,o placement - DONE
 # TODO: 3) player registarion
-# TODO: 4) win detection
-# TODO: 5) target line size
+# TODO: 4) win detection - DONE
+# TODO: 5) target line size - DONE
 # TODO: 6) exception catchers
+# TODO: 7) fog of war (setting)
+# TODO: 8) customization (setting)
+# TODO: 9) something else my mind couldn't figure out
+
 
 TOKEN = ""
 prefix = "//"
@@ -33,10 +32,14 @@ winner = None
 emptySpot = "."
 
 @bot.command(name = "start")
-async def startGame(ctx, *, size):                                              # TODO: add win length (target line size)
+async def StartGame(ctx, *, size, setWinLength):                                              # TODO: add win length (target line size)
     global grid
     global turn
+    global winLength
+
     channel = bot.get_channel(testChannel)
+
+    winLength = int(setWinLength)
     x_size, y_size = size.split("x")
     x_size = int(x_size)
     y_size = int(y_size)
@@ -44,19 +47,19 @@ async def startGame(ctx, *, size):                                              
     turn = 0
 
     grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
-    await printGrid(grid, channel)
+    await PrintGrid(grid, channel)
     return
 
 @bot.command(name = "test")                                                     # !Shows grid
 async def TEST(ctx):
     channel = bot.get_channel(testChannel)
-    await printGrid(grid, channel)
+    await PrintGrid(grid, channel)
 
 @bot.command(name = "test2")
 async def TEST2(ctx, *, setWinLength):
     global winLength
     winLength = int(setWinLength)
-    await winDetection(grid)
+    await WinDetection(grid)
 
 @bot.command(name = "set")
 async def gameTurn(ctx, *, coords):
@@ -64,12 +67,12 @@ async def gameTurn(ctx, *, coords):
     x, y = coords.split(" ")
     x = int(x) - 1
     y = int(y) - 1
-    await changeState(x, y, grid, channel)
-    await printGrid(grid, channel)
-    await winDetection(grid)
+    await ChangeState(x, y, grid, channel)
+    await PrintGrid(grid, channel)
+    await WinDetection(grid)
     return
 
-async def printGrid(grid, channel):
+async def PrintGrid(grid, channel):
     channel = channel
     output = []
     for i in grid:
@@ -79,7 +82,7 @@ async def printGrid(grid, channel):
     await channel.send("```\n" + output + "\n```")
     return
 
-async def changeState(x, y, grid, channel):
+async def ChangeState(x, y, grid, channel):
     global turn
     cell = grid[x][y]
 
@@ -95,7 +98,7 @@ async def changeState(x, y, grid, channel):
         turn = 0
     return
 
-async def winDetection(grid):
+async def WinDetection(grid):
     borderSize = math.floor((winLength / 2))
     x_size = len(grid) - borderSize
     y_size = len(grid[0]) - borderSize
@@ -103,27 +106,27 @@ async def winDetection(grid):
     for i in range(borderSize, x_size):                                         #general/core checking
         for j in range(borderSize, y_size):
             if(grid[i][j] != emptySpot):
-                await horizontalWinDetection(i, j, borderSize)
-                await verticalWinDetection(i, j, borderSize)
+                await HorizontalWinDetection(i, j, borderSize)
+                await VerticalWinDetection(i, j, borderSize)
                 await LRdiagonalWinDetection(i, j, borderSize)
                 await RLdiagonalWinDetection(i, j, borderSize)
 
     for i in range(-borderSize, borderSize):                                    #horizontal border checking
         for j in range(borderSize, y_size):
             if(grid[i][j] != emptySpot):
-                await horizontalWinDetection(i, j, borderSize)
+                await HorizontalWinDetection(i, j, borderSize)
 
     for i in range(borderSize, x_size):                                         #vertical border checking
         for j in range(-borderSize, borderSize):
             if(grid[i][j] != emptySpot):
-                await verticalWinDetection(i, j, borderSize)
+                await VerticalWinDetection(i, j, borderSize)
 
     if(isWin):
         await WinAnnounce(winner)
 
     return
 
-async def horizontalWinDetection(x, y, borderSize):
+async def HorizontalWinDetection(x, y, borderSize):
     global isWin
     global winner
     neighbours = 0
@@ -137,7 +140,7 @@ async def horizontalWinDetection(x, y, borderSize):
 
     return
 
-async def verticalWinDetection(x, y, borderSize):
+async def VerticalWinDetection(x, y, borderSize):
     global isWin
     global winner
     neighbours = 0
