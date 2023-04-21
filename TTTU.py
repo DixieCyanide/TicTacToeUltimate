@@ -8,10 +8,10 @@ from discord.ext import commands
 # TODO: 3) player registarion
 # TODO: 4) win detection - DONE
 # TODO: 5) target line size - DONE
-# TODO: 6) exception catchers
+# TODO: 6) exception catchers - partially done
 # TODO: 7) fog of war (setting)
 # TODO: 8) customization (setting)
-# TODO: 9) something else my mind couldn't figure out
+# TODO: 9) standart settings (setting) - partially done
 
 
 TOKEN = ""
@@ -22,38 +22,54 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
 
-bot = commands.Bot(command_prefix=prefix, intents=intents)
+bot = commands.Bot(command_prefix = prefix, intents = intents)
+
+default_win_length = 3
+default_y_size = 3
+default_x_size = 3
 
 grid = []
 turn = 0
-winLength = 3
 isWin = False
 winner = None
+winLength = None
+
 emptySpot = "."
 
 @bot.command(name = "start")
-async def StartGame(ctx, *, size, setWinLength):                                              # TODO: add win length (target line size)
+async def StartGame(ctx, size = None, setWinLength:int = None):                                              # TODO: add win length (target line size)
     global grid
     global turn
     global winLength
 
     channel = bot.get_channel(testChannel)
+    grid = []
 
-    winLength = int(setWinLength)
+    try:
+        winLength = int(setWinLength)
+    except:
+        winLength = default_win_length
+    
+    try:
+        size.split("x")
+    except:
+        grid = [[emptySpot for y in range(default_y_size)] for x in range(default_x_size)]
+        await PrintGrid(channel)
+        return
+
     x_size, y_size = size.split("x")
     x_size = int(x_size)
     y_size = int(y_size)
-    grid = []
     turn = 0
 
     grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
-    await PrintGrid(grid, channel)
+    await PrintGrid(channel)
     return
 
 @bot.command(name = "test")                                                     # !Shows grid
 async def TEST(ctx):
     channel = bot.get_channel(testChannel)
-    await PrintGrid(grid, channel)
+    await PrintGrid(channel)
 
 @bot.command(name = "test2")
 async def TEST2(ctx, *, setWinLength):
@@ -62,19 +78,35 @@ async def TEST2(ctx, *, setWinLength):
     await WinDetection(grid)
 
 @bot.command(name = "set")
-async def gameTurn(ctx, *, coords):
+async def GameTurn(ctx, *, coords = None):
     channel = bot.get_channel(testChannel)
-    x, y = coords.split(" ")
+
+    try:
+        x, y = coords.split(" ")
+    except:
+        await channel.send("Type two coordinates please.")
+        return
+    
     x = int(x) - 1
     y = int(y) - 1
-    await ChangeState(x, y, grid, channel)
-    await PrintGrid(grid, channel)
-    await WinDetection(grid)
+
+    if(x > len(grid)):
+        await channel.send("Out of bounds!")
+        return
+
+    if(y > len(grid[0])):
+        await channel.send("Out of bounds!")
+        return
+
+    await ChangeState(x, y, channel)
+    await PrintGrid(channel)
+    await WinDetection()
     return
 
-async def PrintGrid(grid, channel):
+async def PrintGrid(channel):
     channel = channel
     output = []
+
     for i in grid:
         gridLine = "".join(i) + "\n"
         output.append(gridLine)
@@ -82,7 +114,8 @@ async def PrintGrid(grid, channel):
     await channel.send("```\n" + output + "\n```")
     return
 
-async def ChangeState(x, y, grid, channel):
+async def ChangeState(x, y, channel):
+    global grid
     global turn
     cell = grid[x][y]
 
@@ -98,7 +131,7 @@ async def ChangeState(x, y, grid, channel):
         turn = 0
     return
 
-async def WinDetection(grid):
+async def WinDetection():
     borderSize = math.floor((winLength / 2))
     x_size = len(grid) - borderSize
     y_size = len(grid[0]) - borderSize
