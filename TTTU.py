@@ -5,13 +5,16 @@ from discord.ext import commands
 # TODO: main funcsions:
 # TODO: 1) grid creation - DONE
 # TODO: 2) x,o placement - DONE
-# TODO: 3) player registarion
-# TODO: 4) win detection - DONE
+# TODO: 3) player registarion - DONE
+# TODO: 4) win detection - DONE 
 # TODO: 5) target line size - DONE
 # TODO: 6) exception catchers - partially done
 # TODO: 7) fog of war (setting)
 # TODO: 8) customization (setting)
 # TODO: 9) standart settings (setting) - partially done
+# TODO: 10) line numbers on sides like on chess board (setting) (sponge#4716)
+# TODO: 11) optimize win detection (#4)
+# TODO: 12) switch sides (sponge#4716)
 
 
 TOKEN = ""
@@ -34,16 +37,23 @@ isWin = False
 winner = None
 winLength = None
 
+players = [None] * 2
+isRegClosed = False
+
 emptySpot = "."
 
 @bot.command(name = "start")
-async def StartGame(ctx, size = None, setWinLength:int = None):                                              # TODO: add win length (target line size)
+async def StartGame(ctx, size = None, setWinLength:int = None):
     global grid
     global turn
     global winLength
+    global players
 
-    channel = bot.get_channel(testChannel)
     grid = []
+
+    playerID = ctx.author.id
+    players[0] = playerID
+    await ctx.send("You have registered for a game.")
 
     try:
         winLength = int(setWinLength)
@@ -54,7 +64,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):                 
         size.split("x")
     except:
         grid = [[emptySpot for y in range(default_y_size)] for x in range(default_x_size)]
-        await PrintGrid(channel)
+        await PrintGrid(ctx)
         return
 
     x_size, y_size = size.split("x")
@@ -63,64 +73,85 @@ async def StartGame(ctx, size = None, setWinLength:int = None):                 
     turn = 0
 
     grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
-    await PrintGrid(channel)
+    await PrintGrid(ctx)
     return
-
-@bot.command(name = "test")                                                     # !Shows grid
-async def TEST(ctx):
-    channel = bot.get_channel(testChannel)
-    await PrintGrid(channel)
-
-@bot.command(name = "test2")
-async def TEST2(ctx, *, setWinLength):
-    global winLength
-    winLength = int(setWinLength)
-    await WinDetection(grid)
 
 @bot.command(name = "set")
 async def GameTurn(ctx, *, coords = None):
-    channel = bot.get_channel(testChannel)
+    playerID = ctx.author.id
 
+    if(playerID != players[0] and playerID != players[1]):
+        await ctx.send("You are not registered for this game!")
+        return
+
+    if(players[turn] != playerID):
+        await ctx.send("This is not your turn!")
+        return
+    
     try:
         x, y = coords.split(" ")
+        int(x)
+        int(y)
     except:
-        await channel.send("Type two coordinates please.")
+        await ctx.send("Type two coordinates please.")
+        return
+
+    if(int(x) > len(grid)):
+        await ctx.send("Out of bounds!")
+        return
+
+    if(int(y) > len(grid[0])):
+        await ctx.send("Out of bounds!")
         return
     
     x = int(x) - 1
     y = int(y) - 1
 
-    if(x > len(grid)):
-        await channel.send("Out of bounds!")
-        return
-
-    if(y > len(grid[0])):
-        await channel.send("Out of bounds!")
-        return
-
-    await ChangeState(x, y, channel)
-    await PrintGrid(channel)
+    await ChangeState(ctx, x, y)
+    await PrintGrid(ctx)
     await WinDetection()
+
+    if(isWin):
+        await WinAnnounce(winner)
+
     return
 
-async def PrintGrid(channel):
-    channel = channel
+@bot.command(name = "register")
+async def Registration(ctx):
+    global players
+
+    playerID = ctx.author.id
+
+    if(players[1] == None):
+        players[1] = playerID
+    elif(players[1] == playerID):
+        await ctx.send("You are already registered for this game.")
+        return
+    else:
+        await ctx.send("Game is full already!")
+        return
+    
+    await ctx.send("You have registered for a game.")
+    return
+
+async def PrintGrid(ctx):
     output = []
 
     for i in grid:
         gridLine = "".join(i) + "\n"
         output.append(gridLine)
+    
     output = "".join(output)
-    await channel.send("```\n" + output + "\n```")
+    await ctx.send("```\n" + output + "\n```")
     return
 
-async def ChangeState(x, y, channel):
+async def ChangeState(ctx, x, y):
     global grid
     global turn
     cell = grid[x][y]
 
-    if(cell != "."):
-        await channel.send("This spot is already taken, choose another one please.")
+    if(cell != emptySpot):
+        await ctx.send("This spot is already taken, choose another one please.")
         return
     
     if(turn == 0):
@@ -153,9 +184,6 @@ async def WinDetection():
         for j in range(-borderSize, borderSize):
             if(grid[i][j] != emptySpot):
                 await VerticalWinDetection(i, j, borderSize)
-
-    if(isWin):
-        await WinAnnounce(winner)
 
     return
 
@@ -215,12 +243,13 @@ async def RLdiagonalWinDetection(x, y, borderSize):
 
     return
 
-async def WinAnnounce(winner):
+async def WinAnnounce(ctx, winner):
     global isWin
-    channel = bot.get_channel(testChannel)
+    global players
 
-    await channel.send("Winner is: " + winner)
+    await ctx.send("Winner is: " + players[turn])
     isWin = False
+    players = [None] * 2
 
     return
 
