@@ -1,6 +1,8 @@
 import math
+import asyncio
 import discord
 from discord.ext import commands
+import sql
 
 # TODO: main funcsions:
 # TODO: 1) grid creation - DONE
@@ -31,54 +33,72 @@ default_win_length = 3
 default_y_size = 3
 default_x_size = 3
 
-grid = []
-turn = 0
-isWin = False
-winner = None
-winLength = None
-
-players = [None] * 2
-isRegClosed = False
-
 emptySpot = "."
+
+gameStates = {}
+gameSettings = {}
+gameVisualSettings = {}
+gameTurns = {}
+gamePlayers = {}
+
+
+@bot.event
+async def on_guild_join(guild):                                                 # adds new server to database
+    serverID = guild.id
+    sql.CreateRow(serverID)
+    return
+
 
 @bot.command(name = "start")
 async def StartGame(ctx, size = None, setWinLength:int = None):
-    global grid
     global turn
-    global winLength
-    global players
+
+    global gameStates
+    global gameSettings
+    global gameTurns
 
     grid = []
-
+    serverID = ctx.guild.id
     playerID = ctx.author.id
-    players[0] = playerID
-    await ctx.send("You have registered for a game.")
+
+    try:
+        await RemoveGame(serverID)
+    except:
+        print("first start")                                                    # !for testing purposes
 
     try:
         winLength = int(setWinLength)
     except:
-        winLength = default_win_length
+        winLength = default_win_length              # TODO: grab default values from sql
     
     try:
         size.split("x")
+        x_size, y_size = size.split("x")
+        x_size = int(x_size)
+        y_size = int(y_size)
+        grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
+        await UpdateGameSettings(x_size, y_size, winLength, serverID)
     except:
-        grid = [[emptySpot for y in range(default_y_size)] for x in range(default_x_size)]
-        await PrintGrid(ctx)
-        return
+        x_size = default_x_size
+        y_size = default_y_size
+        grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
+        await UpdateGameSettings(x_size, y_size, winLength, serverID)
 
-    x_size, y_size = size.split("x")
-    x_size = int(x_size)
-    y_size = int(y_size)
     turn = 0
-
-    grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
-    await PrintGrid(ctx)
+    await UpdateGameState(grid, serverID)
+    await UpdateGameTurn(turn, serverID)
+    await AddGamePlayers(ctx, playerID, serverID)
+    await PrintGrid(ctx, grid)
     return
+
 
 @bot.command(name = "set")
 async def GameTurn(ctx, *, coords = None):
     playerID = ctx.author.id
+    serverID = ctx.guild.id
+    grid = gameStates[serverID]
+    players = gamePlayers[serverID]
+    turn = gameTurns[serverID]
 
     if(playerID != players[0] and playerID != players[1]):
         await ctx.send("You are not registered for this game!")
@@ -107,34 +127,22 @@ async def GameTurn(ctx, *, coords = None):
     x = int(x) - 1
     y = int(y) - 1
 
-    await ChangeState(ctx, x, y)
-    await PrintGrid(ctx)
-    await WinDetection()
-
-    if(isWin):
-        await WinAnnounce(winner)
+    await ChangeState(ctx, x, y, serverID)
+    await PrintGrid(ctx, grid)
+    await WinDetection(ctx, serverID)
 
     return
+
 
 @bot.command(name = "register")
 async def Registration(ctx):
-    global players
-
+    serverID = ctx.guild.id
     playerID = ctx.author.id
-
-    if(players[1] == None):
-        players[1] = playerID
-    elif(players[1] == playerID):
-        await ctx.send("You are already registered for this game.")
-        return
-    else:
-        await ctx.send("Game is full already!")
-        return
-    
-    await ctx.send("You have registered for a game.")
+    await AddGamePlayers(ctx, playerID, serverID)
     return
 
-async def PrintGrid(ctx):
+
+async def PrintGrid(ctx, grid):
     output = []
 
     for i in grid:
@@ -145,9 +153,13 @@ async def PrintGrid(ctx):
     await ctx.send("```\n" + output + "\n```")
     return
 
-async def ChangeState(ctx, x, y):
-    global grid
-    global turn
+
+async def ChangeState(ctx, x, y, serverID):
+    global gameStates
+    global gameTurns
+    
+    grid = gameStates[serverID]
+    turn = gameTurns[serverID]
     cell = grid[x][y]
 
     if(cell != emptySpot):
@@ -160,9 +172,17 @@ async def ChangeState(ctx, x, y):
     elif(turn == 1):
         grid[x][y] = "O"
         turn = 0
+
+    gameStates[serverID] = grid
+    gameTurns[serverID] = turn
     return
 
-async def WinDetection():
+
+async def WinDetection(ctx, serverID):
+    gameSetting = gameSettings[serverID]
+    winLength = gameSetting[2]
+    grid = gameStates[serverID]
+
     borderSize = math.floor((winLength / 2))
     x_size = len(grid) - borderSize
     y_size = len(grid[0]) - borderSize
@@ -170,87 +190,157 @@ async def WinDetection():
     for i in range(borderSize, x_size):                                         #general/core checking
         for j in range(borderSize, y_size):
             if(grid[i][j] != emptySpot):
-                await HorizontalWinDetection(i, j, borderSize)
-                await VerticalWinDetection(i, j, borderSize)
-                await LRdiagonalWinDetection(i, j, borderSize)
-                await RLdiagonalWinDetection(i, j, borderSize)
+                await HorizontalWinDetection(i, j, borderSize, winLength, serverID, ctx)
+                await VerticalWinDetection(i, j, borderSize, winLength, serverID, ctx)
+                await LRdiagonalWinDetection(i, j, borderSize, winLength, serverID, ctx)
+                await RLdiagonalWinDetection(i, j, borderSize, winLength, serverID, ctx)
 
     for i in range(-borderSize, borderSize):                                    #horizontal border checking
         for j in range(borderSize, y_size):
             if(grid[i][j] != emptySpot):
-                await HorizontalWinDetection(i, j, borderSize)
+                await HorizontalWinDetection(i, j, borderSize, winLength, serverID, ctx)
 
     for i in range(borderSize, x_size):                                         #vertical border checking
         for j in range(-borderSize, borderSize):
             if(grid[i][j] != emptySpot):
-                await VerticalWinDetection(i, j, borderSize)
+                await VerticalWinDetection(i, j, borderSize, winLength, serverID, ctx)
 
     return
 
-async def HorizontalWinDetection(x, y, borderSize):
-    global isWin
-    global winner
+
+async def HorizontalWinDetection(x, y, borderSize, winLength, serverID, ctx):
+    try:                                                                        # not a great thing, but i need it
+        grid = gameStates[serverID]
+    except:
+        pass
     neighbours = 0
+
     for i in range (-borderSize, borderSize + 1):
         if(grid[x][y + i] == grid[x][y]):
             neighbours += 1
 
     if(neighbours == winLength):
-        isWin = True
-        winner = grid[x][y]
+        await WinAnnounce(ctx, serverID)
 
     return
 
-async def VerticalWinDetection(x, y, borderSize):
-    global isWin
-    global winner
+
+async def VerticalWinDetection(x, y, borderSize, winLength, serverID, ctx):
+    try:                                                                        # not a great thing, but i need it
+        grid = gameStates[serverID]
+    except:
+        pass
     neighbours = 0
+
     for i in range (-borderSize, borderSize + 1):
         if(grid[x + i][y] == grid[x][y]):
             neighbours += 1
     
     if(neighbours == winLength):
-        isWin = True
-        winner = grid[x][y]
+        await WinAnnounce(ctx, serverID)
 
     return
 
-async def LRdiagonalWinDetection(x, y, borderSize):
-    global isWin
-    global winner
+
+async def LRdiagonalWinDetection(x, y, borderSize, winLength, serverID, ctx):
+    try:                                                                        # not a great thing, but i need it
+        grid = gameStates[serverID]
+    except:
+        pass
     neighbours = 0
+
     for i in range (-borderSize, borderSize + 1):
         if(grid[x + i][y + i] == grid[x][y]):
             neighbours += 1
     
     if(neighbours == winLength):
-        isWin = True
-        winner = grid[x][y]
+        await WinAnnounce(ctx, serverID)
 
     return
 
-async def RLdiagonalWinDetection(x, y, borderSize):
-    global isWin
-    global winner
+
+async def RLdiagonalWinDetection(x, y, borderSize, winLength, serverID, ctx):
+    try:                                                                        # not a great thing, but i need it
+        grid = gameStates[serverID]
+    except:
+        pass
     neighbours = 0
+
     for i in range (-borderSize, borderSize + 1):
         if(grid[x + i][y - i] == grid[x][y]):
             neighbours += 1
     
     if(neighbours == winLength):
-        isWin = True
-        winner = grid[x][y]
+        await WinAnnounce(ctx, serverID)
 
     return
 
-async def WinAnnounce(ctx, winner):
-    global isWin
-    global players
 
-    await ctx.send("Winner is: " + players[turn])
-    isWin = False
-    players = [None] * 2
-
+async def WinAnnounce(ctx, serverID):
+    winner = ctx.author.mention
+    await ctx.send("Winner is: " + winner + " !")
+    await asyncio.sleep(1)
+    await RemoveGame(serverID)
     return
+
+
+async def UpdateGameState(grid, serverID):
+    global gameStates
+    gameStates[serverID] = grid
+    return
+
+
+async def UpdateGameTurn(turn, serverID):
+    global gameTurns
+    gameTurns[serverID] = turn
+    return
+
+
+async def UpdateGameSettings(x, y, winLength, serverID):
+    global gameSettings
+    settings = [x, y, winLength]
+    gameSettings[serverID] = settings
+    return
+
+
+async def AddGamePlayers(ctx, playerID, serverID):
+    global gamePlayers
+    
+    try:
+        players = gamePlayers[serverID]
+        if(playerID == players[0]):
+            await ctx.send("You are already registered for this game.")
+            return
+        elif(playerID == players[1]):
+            await ctx.send("Game is full already!")
+            return
+        players[1] = playerID
+        gamePlayers[serverID] = players
+        await ctx.send("You have registered for a game.")
+    except:
+        players = [None] * 2
+        players[0] = playerID
+        gamePlayers[serverID] = players
+        await ctx.send("You have registered for a game.")
+    
+    return
+
+
+async def SwitchGamePlayers():
+                                            # TODO
+    return
+
+
+async def RemoveGame(serverID):
+    global gameStates
+    global gameSettings
+    global gameTurns
+    global gamePlayers
+    gameStates.pop(serverID)
+    gameSettings.pop(serverID)
+    gameTurns.pop(serverID)
+    gamePlayers.pop(serverID)
+    return
+
 
 bot.run(TOKEN)
