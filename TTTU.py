@@ -15,13 +15,12 @@ import sql
 # TODO: 8) customization (setting)
 # TODO: 9) standart settings (setting) - partially done
 # TODO: 10) line numbers on sides like on chess board (setting) (sponge#4716)
-# TODO: 11) optimize win detection (#4)
-# TODO: 12) switch sides (sponge#4716)
+# TODO: 11) optimize win detection (#4) ???
+# TODO: 12) switch sides (sponge#4716) - DONE
 
 
 TOKEN = ""
 prefix = "//"
-testChannel = 
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -35,11 +34,11 @@ default_x_size = 3
 
 emptySpot = "."
 
-gameStates = {}
-gameSettings = {}
-gameVisualSettings = {}
-gameTurns = {}
-gamePlayers = {}
+gameStates = {}                                                                 # holds game grid ([[o],[o]])
+gameSettings = {}                                                               # holds grid size and winlength ([x, y, winLength])
+gameVisualSettings = {}                                                         # holds visuals for grid (???)
+gameTurns = {}                                                                  # holds turn and if it's possible to switch sides ([bool, bool])
+gamePlayers = {}                                                                # holds players id's (default: [player started, player registered])
 
 
 @bot.event
@@ -49,10 +48,15 @@ async def on_guild_join(guild):                                                 
     return
 
 
+@bot.command(name = "test")
+async def test(ctx):
+    await ctx.send(gamePlayers[ctx.guild.id])
+    await ctx.send(gameTurns[ctx.guild.id])
+    return
+
+
 @bot.command(name = "start")
 async def StartGame(ctx, size = None, setWinLength:int = None):
-    global turn
-
     global gameStates
     global gameSettings
     global gameTurns
@@ -84,7 +88,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
         grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
         await UpdateGameSettings(x_size, y_size, winLength, serverID)
 
-    turn = 0
+    turn = [0, 1]
     await UpdateGameState(grid, serverID)
     await UpdateGameTurn(turn, serverID)
     await AddGamePlayers(ctx, playerID, serverID)
@@ -130,7 +134,6 @@ async def GameTurn(ctx, *, coords = None):
     await ChangeState(ctx, x, y, serverID)
     await PrintGrid(ctx, grid)
     await WinDetection(ctx, serverID)
-
     return
 
 
@@ -139,6 +142,30 @@ async def Registration(ctx):
     serverID = ctx.guild.id
     playerID = ctx.author.id
     await AddGamePlayers(ctx, playerID, serverID)
+    return
+
+
+@bot.command(name = "switch")
+async def SwitchGamePlayers(ctx):
+    global gamePlayers
+
+    serverID = ctx.guild.id
+    turn = gameTurns[serverID]
+    isPossible = turn[1]
+    players = gamePlayers[serverID]
+
+    if(isPossible == 0):
+        await ctx.send("It's not possible to switch sides any more.")
+        return
+    
+    tempContainer = players[0]
+    players[0] = players[1]
+    players[1] = tempContainer
+    tempContainer = None
+    turn[1] = 0
+    gamePlayers[serverID] = players
+    await UpdateGameTurn(turn, serverID)
+    await ctx.send("You have switched sides successfully")
     return
 
 
@@ -155,9 +182,6 @@ async def PrintGrid(ctx, grid):
 
 
 async def ChangeState(ctx, x, y, serverID):
-    global gameStates
-    global gameTurns
-    
     grid = gameStates[serverID]
     turn = gameTurns[serverID]
     cell = grid[x][y]
@@ -166,15 +190,15 @@ async def ChangeState(ctx, x, y, serverID):
         await ctx.send("This spot is already taken, choose another one please.")
         return
     
-    if(turn == 0):
+    if(turn[0] == 0):
         grid[x][y] = "X"
-        turn = 1
-    elif(turn == 1):
+        turn[0] = 1
+    elif(turn[0] == 1):
         grid[x][y] = "O"
-        turn = 0
+        turn[0] = 0
 
-    gameStates[serverID] = grid
-    gameTurns[serverID] = turn
+    UpdateGameState(grid, serverID)
+    UpdateGameTurn(turn, serverID)
     return
 
 
@@ -278,8 +302,7 @@ async def RLdiagonalWinDetection(x, y, borderSize, winLength, serverID, ctx):
 
 async def WinAnnounce(ctx, serverID):
     winner = ctx.author.mention
-    await ctx.send("Winner is: " + winner + " !")
-    await asyncio.sleep(1)
+    await ctx.send(f"Winner is: {winner}!")
     await RemoveGame(serverID)
     return
 
@@ -323,11 +346,6 @@ async def AddGamePlayers(ctx, playerID, serverID):
         gamePlayers[serverID] = players
         await ctx.send("You have registered for a game.")
     
-    return
-
-
-async def SwitchGamePlayers():
-                                            # TODO
     return
 
 
