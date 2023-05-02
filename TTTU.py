@@ -1,5 +1,4 @@
 import math
-import asyncio
 import discord
 from discord.ext import commands
 import sql
@@ -18,7 +17,6 @@ import sql
 # TODO: 11) optimize win detection (#4) ???
 # TODO: 12) switch sides (sponge#4716) - DONE
 
-
 TOKEN = ""
 prefix = "//"
 
@@ -28,15 +26,12 @@ intents.messages = True
 
 bot = commands.Bot(command_prefix = prefix, intents = intents)
 
-default_win_length = 3
-default_y_size = 3
-default_x_size = 3
-
-emptySpot = "."
+show_x_size = 0
+show_y_size = 0                                                                 # for fogofwar
 
 gameStates = {}                                                                 # holds game grid ([[o],[o]])
 gameSettings = {}                                                               # holds grid size and winlength ([x, y, winLength])
-gameVisualSettings = {}                                                         # holds visuals for grid (???)
+gameVisualSettings = {}                                                         # holds visuals for grid ([Xsign, Osign, emptySpot])
 gameTurns = {}                                                                  # holds turn and if it's possible to switch sides ([bool, bool])
 gamePlayers = {}                                                                # holds players id's (default: [player started, player registered])
 
@@ -50,8 +45,8 @@ async def on_guild_join(guild):                                                 
 
 @bot.command(name = "test")
 async def test(ctx):
-    await ctx.send(gamePlayers[ctx.guild.id])
-    await ctx.send(gameTurns[ctx.guild.id])
+    serverID = ctx.guild.id
+    print(sql.RetrieveData("ServerSettings", "EmptySign", serverID))
     return
 
 
@@ -61,9 +56,15 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     global gameSettings
     global gameTurns
 
-    grid = []
     serverID = ctx.guild.id
     playerID = ctx.author.id
+
+    grid = []
+    default_win_length = sql.RetrieveData("ServerSettings", "DefaultWinLength", serverID)                     # grabbing default settings from sql
+    default_size = sql.RetrieveData("ServerSettings", "DefaultGridSize  ", serverID)
+    Xsign = sql.RetrieveData("ServerSettings", "Xsign", serverID)
+    Osign = sql.RetrieveData("ServerSettings", "OSign", serverID)
+    emptySpot = sql.RetrieveData("ServerSettings", "EmptySign", serverID)
 
     try:
         await RemoveGame(serverID)
@@ -73,24 +74,31 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     try:
         winLength = int(setWinLength)
     except:
-        winLength = default_win_length              # TODO: grab default values from sql
-    
+        winLength = default_win_length
+
     try:
         size.split("x")
         x_size, y_size = size.split("x")
         x_size = int(x_size)
         y_size = int(y_size)
+
+        if(x_size > 40 or y_size > 40 or x_size < 3 or y_size < 3):             # checks for minimum and maximum grid size
+            await ctx.send("You set size wrongly. Using default size settings.")
+            raise Exception("Field is out of bounds! (3x3 - 40x40)")
+        
         grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
         await UpdateGameSettings(x_size, y_size, winLength, serverID)
     except:
-        x_size = default_x_size
-        y_size = default_y_size
+        x_size, y_size = default_size.split("x")
+        x_size = int(x_size)
+        y_size = int(y_size)
         grid = [[emptySpot for y in range(y_size)] for x in range(x_size)]
         await UpdateGameSettings(x_size, y_size, winLength, serverID)
 
     turn = [0, 1]
     await UpdateGameState(grid, serverID)
     await UpdateGameTurn(turn, serverID)
+    await UpdateGameVisualSettings(Xsign, Osign, emptySpot, serverID)
     await AddGamePlayers(ctx, playerID, serverID)
     await PrintGrid(ctx, grid)
     return
@@ -108,7 +116,7 @@ async def GameTurn(ctx, *, coords = None):
         await ctx.send("You are not registered for this game!")
         return
 
-    if(players[turn] != playerID):
+    if(players[turn[0]] != playerID):
         await ctx.send("This is not your turn!")
         return
     
@@ -120,11 +128,7 @@ async def GameTurn(ctx, *, coords = None):
         await ctx.send("Type two coordinates please.")
         return
 
-    if(int(x) > len(grid)):
-        await ctx.send("Out of bounds!")
-        return
-
-    if(int(y) > len(grid[0])):
+    if(int(x) > len(grid) or int(y) > len(grid[0])):
         await ctx.send("Out of bounds!")
         return
     
@@ -169,7 +173,7 @@ async def SwitchGamePlayers(ctx):
     return
 
 
-async def PrintGrid(ctx, grid):
+async def PrintGrid(ctx, grid):             # TODO: Fog of war
     output = []
 
     for i in grid:
@@ -183,29 +187,37 @@ async def PrintGrid(ctx, grid):
 
 async def ChangeState(ctx, x, y, serverID):
     grid = gameStates[serverID]
+    visualSettings = gameVisualSettings[serverID]
     turn = gameTurns[serverID]
+    
     cell = grid[x][y]
+    Xsign = visualSettings[0]
+    Osign = visualSettings[1]
+    emptySpot = visualSettings[2]
 
     if(cell != emptySpot):
         await ctx.send("This spot is already taken, choose another one please.")
         return
     
     if(turn[0] == 0):
-        grid[x][y] = "X"
+        grid[x][y] = Xsign
         turn[0] = 1
     elif(turn[0] == 1):
-        grid[x][y] = "O"
+        grid[x][y] = Osign
         turn[0] = 0
 
-    UpdateGameState(grid, serverID)
-    UpdateGameTurn(turn, serverID)
+    await UpdateGameState(grid, serverID)
+    await UpdateGameTurn(turn, serverID)
     return
 
 
 async def WinDetection(ctx, serverID):
-    gameSetting = gameSettings[serverID]
-    winLength = gameSetting[2]
     grid = gameStates[serverID]
+    gameSetting = gameSettings[serverID]
+    visualSettings = gameVisualSettings[serverID]
+    
+    winLength = gameSetting[2]
+    emptySpot = visualSettings[2]
 
     borderSize = math.floor((winLength / 2))
     x_size = len(grid) - borderSize
@@ -323,6 +335,13 @@ async def UpdateGameSettings(x, y, winLength, serverID):
     global gameSettings
     settings = [x, y, winLength]
     gameSettings[serverID] = settings
+    return
+
+
+async def UpdateGameVisualSettings(X_sign, O_sign, empty_Spot, serverID):
+    global gameVisualSettings
+    visualSettings = [X_sign, O_sign, empty_Spot]
+    gameVisualSettings[serverID] = visualSettings
     return
 
 

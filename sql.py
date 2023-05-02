@@ -11,27 +11,26 @@ basic_cfg = config["BASIC"]
 def Connect():
     return pyodbc.connect(basic_cfg["DBpath"])
 
-def RetrieveData(table_name: str, search_col: str, to_search: str):
+def RetrieveData(table_name: str, column_name: str, ServerID: int):
     conn = Connect()
     cursor = conn.cursor()
-    with cursor.connection:
-        cursor.execute('SELECT * FROM TTTUbot WHERE ' + "\"" + search_col + "\"" + '=\'' + to_search + '\'')
+    cursor.execute(f"SELECT {column_name} FROM {table_name} WHERE ServerID = {ServerID}")
+    return cursor.fetchval()
     conn.close()
-    return cursor.fetchall()
 
-def InsertData(table_name: str, col: str, value: str):
+def UpdateData(table_name: str, column_name: str, value: str, ServerID: int):
     conn = Connect()
     cursor = conn.cursor()
-    print(value)
     with cursor.connection:
-        cursor.execute(f"INSERT INTO {table_name} ({col}) VALUES ({value})")
+        cursor.execute(f"UPDATE {table_name} SET {column_name} = {value} WHERE ServerID = {ServerID}")
+    conn.commit()
     conn.close()
 
 def CreateRow(serverID: int):
     conn = Connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO ServerSettings (ServerID) VALUES (?)", (serverID))
+        cursor.execute(f"INSERT INTO ServerSettings (ServerID) VALUES ({serverID})")
     except:
         print("Tried to add existing server") #change to ApplyServerSetting()
     conn.commit()
@@ -45,6 +44,3 @@ def test():
     out = cursor.fetchone()
     print(out)
     return
-
-
-#Server[@Name='DESKTOP-1TIAQ2B\DISCORD_SERVER']/Database[@Name='TTTUbot']/Table[@Name='ServersSettings' and @Schema='dbo']/Data
