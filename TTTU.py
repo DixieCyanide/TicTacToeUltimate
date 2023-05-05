@@ -20,7 +20,7 @@ import sql
 TOKEN = ""
 prefix = "//"
 
-intents = discord.Intents.default()
+intents = discord.Intents.default()                                             # TODO: i think i should remove it and configure on website
 intents.message_content = True
 intents.messages = True
 
@@ -31,7 +31,7 @@ show_y_size = 0                                                                 
 
 gameStates = {}                                                                 # holds game grid ([[o],[o]])
 gameSettings = {}                                                               # holds grid size and winlength ([x, y, winLength])
-gameVisualSettings = {}                                                         # holds visuals for grid ([Xsign, Osign, emptySpot])
+gameVisualSettings = {}                                                         # holds visuals for grid ([Xsign, Osign, emptySpot, isFogOfWar])
 gameTurns = {}                                                                  # holds turn and if it's possible to switch sides ([bool, bool])
 gamePlayers = {}                                                                # holds players id's (default: [player started, player registered])
 
@@ -60,11 +60,13 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     playerID = ctx.author.id
 
     grid = []
-    default_win_length = sql.RetrieveData("ServerSettings", "DefaultWinLength", serverID)                     # grabbing default settings from sql
-    default_size = sql.RetrieveData("ServerSettings", "DefaultGridSize  ", serverID)
-    Xsign = sql.RetrieveData("ServerSettings", "Xsign", serverID)
-    Osign = sql.RetrieveData("ServerSettings", "OSign", serverID)
-    emptySpot = sql.RetrieveData("ServerSettings", "EmptySign", serverID)
+    serverSettings = await GetServerSettings(serverID)
+    default_size = serverSettings[0]
+    default_win_length = serverSettings[1]                     # grabbing default settings from sql
+    isFogOfWar = serverSettings[2]
+    Xsign = serverSettings[3]
+    Osign = serverSettings[4]
+    emptySpot = serverSettings[5]
 
     try:
         await RemoveGame(serverID)
@@ -170,6 +172,45 @@ async def SwitchGamePlayers(ctx):
     gamePlayers[serverID] = players
     await UpdateGameTurn(turn, serverID)
     await ctx.send("You have switched sides successfully")
+    return
+
+
+@bot.command(name = "settings")
+async def ShowSettings(ctx):
+    serverID = ctx.guild.id
+
+    serverSettings = await GetServerSettings(serverID)
+    default_size = serverSettings[0]
+    default_win_length = serverSettings[1]
+    isFogOfWar = bool(serverSettings[2])
+    Xsign = serverSettings[3]
+    Osign = serverSettings[4]
+    emptySpot = serverSettings[5]
+
+    if(isFogOfWar):
+        isFogOfWarText = "Enabled"
+    else:
+        isFogOfWarText = "Disabled"
+
+    settingsEmbed = discord.Embed(                                              # this syntax triggers my whole human being
+        title = "__Server settings__",
+        color = discord.Color.magenta())
+    
+    settingsEmbed.add_field(name = "Visual settings:", value = "", inline = False)
+    settingsEmbed.add_field(name = f"X sign: `{Xsign}`", value = "", inline = True)
+    settingsEmbed.add_field(name = f"O sign: `{Osign}`", value = "", inline = True)
+    settingsEmbed.add_field(name = f"Empty spot: `{emptySpot}`", value = "", inline = True)
+    settingsEmbed.add_field(name = "Fog of war:", value = f"`{isFogOfWarText}`", inline = False)
+    settingsEmbed.add_field(name = "**Default game settings:**", value = "", inline = False)
+    settingsEmbed.add_field(name = f"Size: `{default_size}`", value = "", inline = True)
+    settingsEmbed.add_field(name = f"Win length: `{default_win_length}`", value = "", inline = True)
+    await ctx.send(embed = settingsEmbed)                                       # 8 lines above are looking awful
+    return                                                                      # * IDEA: I have idea how to change it and make code look more awful
+
+
+@bot.command(name = "setup")                                                    # TODO: idk if i should make one command or multiple for configuration :Thonking:
+async def SettingsSetup(ctx):
+
     return
 
 
@@ -338,9 +379,19 @@ async def UpdateGameSettings(x, y, winLength, serverID):
     return
 
 
-async def UpdateGameVisualSettings(X_sign, O_sign, empty_Spot, serverID):
+async def GetServerSettings(serverID):
+    default_size = sql.RetrieveData("ServerSettings", "DefaultGridSize  ", serverID)
+    default_win_length = sql.RetrieveData("ServerSettings", "DefaultWinLength", serverID)                     # grabbing default settings from sql
+    isFogOfWar = sql.RetrieveData("ServerSettings", "IsFogOfWar", serverID)
+    Xsign = sql.RetrieveData("ServerSettings", "Xsign", serverID)
+    Osign = sql.RetrieveData("ServerSettings", "OSign", serverID)
+    emptySpot = sql.RetrieveData("ServerSettings", "EmptySign", serverID)
+    return [default_size, default_win_length, isFogOfWar, Xsign, Osign, emptySpot]
+
+
+async def UpdateGameVisualSettings(X_sign, O_sign, empty_Spot, isFogOfWar, serverID):
     global gameVisualSettings
-    visualSettings = [X_sign, O_sign, empty_Spot]
+    visualSettings = [X_sign, O_sign, empty_Spot, isFogOfWar]
     gameVisualSettings[serverID] = visualSettings
     return
 
