@@ -21,8 +21,7 @@ def RetrieveData(table_name: str, column_name: str, ServerID: int):
 def UpdateData(table_name: str, column_name: str, value: str, ServerID: int):
     conn = Connect()
     cursor = conn.cursor()
-    with cursor.connection:
-        cursor.execute(f"UPDATE {table_name} SET {column_name} = {value} WHERE ServerID = {ServerID}")
+    cursor.execute(f"UPDATE {table_name} SET {column_name} = '{value}' WHERE ServerID = {ServerID}")
     conn.commit()
     conn.close()
 

@@ -100,7 +100,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     turn = [0, 1]
     await UpdateGameState(grid, serverID)
     await UpdateGameTurn(turn, serverID)
-    await UpdateGameVisualSettings(Xsign, Osign, emptySpot, serverID)
+    await UpdateGameVisualSettings(Xsign, Osign, emptySpot, isFogOfWar, serverID)
     await AddGamePlayers(ctx, playerID, serverID)
     await PrintGrid(ctx, grid)
     return
@@ -196,23 +196,73 @@ async def ShowSettings(ctx):
         title = "__Server settings__",
         color = discord.Color.magenta())
     
-    settingsEmbed.add_field(name = "Visual settings:", value = "", inline = False)
-    settingsEmbed.add_field(name = f"X sign: `{Xsign}`", value = "", inline = True)
-    settingsEmbed.add_field(name = f"O sign: `{Osign}`", value = "", inline = True)
-    settingsEmbed.add_field(name = f"Empty spot: `{emptySpot}`", value = "", inline = True)
-    settingsEmbed.add_field(name = "Fog of war:", value = f"`{isFogOfWarText}`", inline = False)
-    settingsEmbed.add_field(name = "**Default game settings:**", value = "", inline = False)
-    settingsEmbed.add_field(name = f"Size: `{default_size}`", value = "", inline = True)
-    settingsEmbed.add_field(name = f"Win length: `{default_win_length}`", value = "", inline = True)
-    await ctx.send(embed = settingsEmbed)                                       # 8 lines above are looking awful
-    return                                                                      # * IDEA: I have idea how to change it and make code look more awful
+    settingsEmbed.add_field(
+        name = "Visual settings:",
+        value = f"X sign: `{Xsign}` | O sign: `{Osign}` | Empty spot: `{emptySpot}`",
+        inline = False)
+    #settingsEmbed.add_field(name = f"X sign: `{Xsign}`", value = "", inline = True)
+    #settingsEmbed.add_field(name = f"O sign: `{Osign}`", value = "", inline = True)
+    #settingsEmbed.add_field(name = f"Empty spot: `{emptySpot}`", value = "", inline = True)
+    settingsEmbed.add_field(
+        name = "Fog of war:",
+        value = f"`{isFogOfWarText}`",
+        inline = False)
+    settingsEmbed.add_field(
+        name = "Default game settings:",
+        value = f"Size: `{default_size}` | Win length: `{default_win_length}`",
+        inline = False)
+    #settingsEmbed.add_field(name = f"Size: `{default_size}`", value = "", inline = True)
+    #settingsEmbed.add_field(name = f"Win length: `{default_win_length}`", value = "", inline = True)
+    await ctx.send(embed = settingsEmbed)                                       # lines above are looking awful
+    return                                                                      # * IDEA: I have idea how to change it and make code look more awful - DONE
 
 
-@bot.command(name = "setup")                                                    # TODO: idk if i should make one command or multiple for configuration :Thonking:
-async def SettingsSetup(ctx):
+@bot.command(name = "setup")
+async def SettingsSetup(ctx, *, msg):
+    serverID = ctx.guild.id
+    
+    try:
+        element, newValue = msg.split(" ")
+    except:
+        await ctx.send("You set values wrong!")
+        return
+    
+    newValueLen = len(newValue)
 
+    if(newValueLen > 5 or newValueLen < 1):
+        await ctx.send("New value's size is too big.")
+        return
+    elif(element != "size" and newValueLen != 1):
+        await ctx.send("New values can only be single-symbol.")
+        return
+    elif(element == "length" and int(newValue) < 3):
+        await ctx.send("Win length is too small.")
+        return
+    elif(element == "fog"):
+        if(newValue != "1" and newValue != "0"):
+            ctx.send("New value can be only 0 or 1")
+            return
+    elif(element == "size"):
+        if(newValueLen < 3):
+            await ctx.send("New value's size is too small")
+            return
+        
+        try:
+            x, y = newValue.split("x")
+            x = int(x)
+            y = int(y)
+            if(x > 40 or y > 40 or x < 3 or y < 3):
+                await ctx.send("Your values are out of bounds!")
+                return
+        except:
+            await ctx.send("New value's syntax is wrong!")
+            return                                                              # many many exceptions... too many and i think it can be done more easily
+    
+    await UpdateServerSettings(element, newValue, serverID)
+    await ctx.send("Settings changed successfully.")
     return
 
+    # TODO: command for default default settings
 
 async def PrintGrid(ctx, grid):             # TODO: Fog of war
     output = []
@@ -357,6 +407,34 @@ async def WinAnnounce(ctx, serverID):
     winner = ctx.author.mention
     await ctx.send(f"Winner is: {winner}!")
     await RemoveGame(serverID)
+    return
+
+
+async def UpdateServerSettings(element, newValue, serverID):
+    #time for big if-elif-else statement cuz python don't accept switch-case superiority
+    column = None
+
+    if(element == "x"):
+        column = "Xsign"
+    elif(element == "o"):
+        column = "Osign"
+    elif(element == "empty"):
+        column = "EmptySign"
+    elif(element == "fog"):
+        column = "IsFogOfWar"
+    elif(element == "size"):
+        column = "DefaultGridSize"
+    elif(element == "length"):
+        column = "DefaultWinLength"
+    else:
+        print("Something went wrong during server settings update")
+        return
+    
+    try:
+        sql.UpdateData("ServerSettings", column, newValue, serverID)
+    except:
+        print("Couldn't update value in sql")
+
     return
 
 
