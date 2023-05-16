@@ -1,3 +1,4 @@
 
 config.txt
 __pycache__/sql.cpython-310.pyc
+*.pyc

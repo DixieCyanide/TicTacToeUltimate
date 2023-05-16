@@ -3,7 +3,7 @@ import pyodbc
 from configparser import ConfigParser
 
 config_path = os.getcwd() + "/config.txt"
-config = ConfigParser(inline_comment_prefixes = ('#', ';'))
+config = ConfigParser(inline_comment_prefixes = ('#'))
 config.read(config_path, encoding = "utf-8")
 
 basic_cfg = config["BASIC"]
@@ -24,14 +24,15 @@ def UpdateData(table_name: str, column_name: str, value: str, ServerID: int):
     cursor.execute(f"UPDATE {table_name} SET {column_name} = '{value}' WHERE ServerID = {ServerID}")
     conn.commit()
     conn.close()
+    return
 
-def CreateRow(serverID: int):
+def CreateSettingsRow(serverID: int):
     conn = Connect()
     cursor = conn.cursor()
     try:
         cursor.execute(f"INSERT INTO ServerSettings (ServerID) VALUES ({serverID})")
     except:
-        print("Tried to add existing server") #change to ApplyServerSetting()
+        print("Tried to add existing server") # change to ApplyServerSetting(), well, they're already applied
     conn.commit()
     conn.close()
     return

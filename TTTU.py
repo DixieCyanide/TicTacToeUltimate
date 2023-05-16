@@ -10,10 +10,10 @@ import sql
 # TODO: 4) win detection - DONE 
 # TODO: 5) target line size - DONE
 # TODO: 6) exception catchers - partially done
-# TODO: 7) fog of war (setting)
-# TODO: 8) customization (setting)
-# TODO: 9) standart settings (setting) - partially done
-# TODO: 10) line numbers on sides like on chess board (setting) (sponge#4716)
+# TODO: 7) fog of war (setting) - DONE
+# TODO: 8) customization (setting) - DONE
+# TODO: 9) standart settings (setting) - DONE
+# TODO: 10) line numbers on sides like on chess board (setting) (sponge#4716) - DISMISSED
 # TODO: 11) optimize win detection (#4) ???
 # TODO: 12) switch sides (sponge#4716) - DONE
 
@@ -26,11 +26,12 @@ intents.messages = True
 
 bot = commands.Bot(command_prefix = prefix, intents = intents)
 
-show_x_size = 0
-show_y_size = 0                                                                 # for fogofwar
+show_x_size = 3                                                                 # default values for first turn with fogofwar
+show_y_size = 3                                                                 # for fogofwar
 
 gameStates = {}                                                                 # holds game grid ([[o],[o]])
 gameSettings = {}                                                               # holds grid size and winlength ([x, y, winLength])
+gameFogOfWar = {}                                                               # holds disclosed area size ([x, y])
 gameVisualSettings = {}                                                         # holds visuals for grid ([Xsign, Osign, emptySpot, isFogOfWar])
 gameTurns = {}                                                                  # holds turn and if it's possible to switch sides ([bool, bool])
 gamePlayers = {}                                                                # holds players id's (default: [player started, player registered])
@@ -43,17 +44,11 @@ async def on_guild_join(guild):                                                 
     return
 
 
-@bot.command(name = "test")
-async def test(ctx):
-    serverID = ctx.guild.id
-    print(sql.RetrieveData("ServerSettings", "EmptySign", serverID))
-    return
-
-
 @bot.command(name = "start")
 async def StartGame(ctx, size = None, setWinLength:int = None):
     global gameStates
     global gameSettings
+    global gameFogOfWar
     global gameTurns
 
     serverID = ctx.guild.id
@@ -72,6 +67,9 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
         await RemoveGame(serverID)
     except:
         print("first start")                                                    # !for testing purposes
+
+    if(isFogOfWar):
+        gameFogOfWar[serverID] = [show_x_size, show_x_size]                 # setting default reveal size
 
     try:
         winLength = int(setWinLength)
@@ -102,7 +100,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     await UpdateGameTurn(turn, serverID)
     await UpdateGameVisualSettings(Xsign, Osign, emptySpot, isFogOfWar, serverID)
     await AddGamePlayers(ctx, playerID, serverID)
-    await PrintGrid(ctx, grid)
+    await PrintGrid(ctx, serverID, grid)
     return
 
 
@@ -110,9 +108,15 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
 async def GameTurn(ctx, *, coords = None):
     playerID = ctx.author.id
     serverID = ctx.guild.id
-    grid = gameStates[serverID]
-    players = gamePlayers[serverID]
-    turn = gameTurns[serverID]
+    
+    try:
+        grid = gameStates[serverID]
+        players = gamePlayers[serverID]
+        turn = gameTurns[serverID]
+        isFogOfWar = gameVisualSettings[serverID][3]
+    except:
+        await ctx.send("Game is not started yet.")
+        return
 
     if(playerID != players[0] and playerID != players[1]):
         await ctx.send("You are not registered for this game!")
@@ -134,11 +138,23 @@ async def GameTurn(ctx, *, coords = None):
         await ctx.send("Out of bounds!")
         return
     
+    if(isFogOfWar):
+        fog_x_size = gameFogOfWar[serverID][0]
+        fog_y_size = gameFogOfWar[serverID][1]
+
+        if(int(x) > fog_x_size):
+            fog_x_size = int(x)
+
+        if(int(y) > fog_y_size):
+            fog_y_size = int(y)
+        
+        await UpdateGameFogOfWar(fog_x_size, fog_y_size, serverID)
+    
     x = int(x) - 1
     y = int(y) - 1
 
     await ChangeState(ctx, x, y, serverID)
-    await PrintGrid(ctx, grid)
+    await PrintGrid(ctx, serverID, grid)
     await WinDetection(ctx, serverID)
     return
 
@@ -147,7 +163,22 @@ async def GameTurn(ctx, *, coords = None):
 async def Registration(ctx):
     serverID = ctx.guild.id
     playerID = ctx.author.id
+
+    try:
+        players = gamePlayers[serverID]
+    except:
+        await ctx.send("Game is not started yet.")
+        return
+    
     await AddGamePlayers(ctx, playerID, serverID)
+    return
+
+
+@bot.command(name = "stop")
+async def StopGame(ctx):
+    serverID = ctx.guild.id
+    await RemoveGame(serverID)
+    await ctx.send("Game stopped.")
     return
 
 
@@ -156,9 +187,13 @@ async def SwitchGamePlayers(ctx):
     global gamePlayers
 
     serverID = ctx.guild.id
-    turn = gameTurns[serverID]
-    isPossible = turn[1]
-    players = gamePlayers[serverID]
+    try:
+        turn = gameTurns[serverID]
+        isPossible = turn[1]
+        players = gamePlayers[serverID]
+    except:
+        await ctx.send("Game is not started yet.")
+        return
 
     if(isPossible == 0):
         await ctx.send("It's not possible to switch sides any more.")
@@ -264,12 +299,24 @@ async def SettingsSetup(ctx, *, msg):
 
     # TODO: command for default default settings
 
-async def PrintGrid(ctx, grid):             # TODO: Fog of war
-    output = []
 
-    for i in grid:
-        gridLine = "".join(i) + "\n"
-        output.append(gridLine)
+async def PrintGrid(ctx, serverID, grid):
+    output = []
+    isFogOfWar = gameVisualSettings[serverID][3]
+
+    if(isFogOfWar):                                                             # if fog of war is enabled
+        FogOfWarSize = gameFogOfWar[serverID]
+        fog_x_size = FogOfWarSize[0]
+        fog_y_size = FogOfWarSize[1]
+
+        fogGrid = grid[:fog_x_size]
+        for i in fogGrid:
+            fogGridLine = "".join(i[:fog_y_size]) + "\n"
+            output.append(fogGridLine)
+    else:
+        for i in grid:                                                          # if fog of war is disabled
+            gridLine = "".join(i) + "\n"
+            output.append(gridLine)
     
     output = "".join(output)
     await ctx.send("```\n" + output + "\n```")
@@ -340,6 +387,7 @@ async def HorizontalWinDetection(x, y, borderSize, winLength, serverID, ctx):
         grid = gameStates[serverID]
     except:
         pass
+        return
     neighbours = 0
 
     for i in range (-borderSize, borderSize + 1):
@@ -356,7 +404,7 @@ async def VerticalWinDetection(x, y, borderSize, winLength, serverID, ctx):
     try:                                                                        # not a great thing, but i need it
         grid = gameStates[serverID]
     except:
-        pass
+        return
     neighbours = 0
 
     for i in range (-borderSize, borderSize + 1):
@@ -373,7 +421,7 @@ async def LRdiagonalWinDetection(x, y, borderSize, winLength, serverID, ctx):
     try:                                                                        # not a great thing, but i need it
         grid = gameStates[serverID]
     except:
-        pass
+        return
     neighbours = 0
 
     for i in range (-borderSize, borderSize + 1):
@@ -390,7 +438,7 @@ async def RLdiagonalWinDetection(x, y, borderSize, winLength, serverID, ctx):
     try:                                                                        # not a great thing, but i need it
         grid = gameStates[serverID]
     except:
-        pass
+        return
     neighbours = 0
 
     for i in range (-borderSize, borderSize + 1):
@@ -441,6 +489,12 @@ async def UpdateServerSettings(element, newValue, serverID):
 async def UpdateGameState(grid, serverID):
     global gameStates
     gameStates[serverID] = grid
+    return
+
+
+async def UpdateGameFogOfWar(x, y, serverID):
+    global gameFogOfWar
+    gameFogOfWar[serverID] = [x, y]
     return
 
 
@@ -500,10 +554,17 @@ async def AddGamePlayers(ctx, playerID, serverID):
 async def RemoveGame(serverID):
     global gameStates
     global gameSettings
+    global gameFogOfWar
+    global gameVisualSettings
     global gameTurns
     global gamePlayers
     gameStates.pop(serverID)
     gameSettings.pop(serverID)
+    try:
+        gameFogOfWar.pop(serverID)
+    except:
+        pass
+    gameVisualSettings.pop(serverID)
     gameTurns.pop(serverID)
     gamePlayers.pop(serverID)
     return
