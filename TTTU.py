@@ -1,6 +1,7 @@
 import math
 import discord
 from discord.ext import commands
+import datetime as dt
 import sql
 
 # TODO: main funcsions:
@@ -16,6 +17,8 @@ import sql
 # TODO: 10) line numbers on sides like on chess board (setting) (sponge#4716) - DISMISSED
 # TODO: 11) optimize win detection (#4) ???
 # TODO: 12) switch sides (sponge#4716) - DONE
+# TODO: 13) console debug - partially done
+# TODO: 14) slash commands
 
 TOKEN = ""
 prefix = "//"
@@ -41,6 +44,7 @@ gamePlayers = {}                                                                
 async def on_guild_join(guild):                                                 # adds new server to database
     serverID = guild.id
     sql.CreateRow(serverID)
+    print(f"Added new server ({serverID}).")
     return
 
 
@@ -63,13 +67,13 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     Osign = serverSettings[4]
     emptySpot = serverSettings[5]
 
-    try:
+    try:                                                                        # if game was not stopped this will prevent weird things that could happen.
         await RemoveGame(serverID)
     except:
-        print("first start")                                                    # !for testing purposes
+        pass
 
     if(isFogOfWar):
-        gameFogOfWar[serverID] = [show_x_size, show_x_size]                 # setting default reveal size
+        gameFogOfWar[serverID] = [show_x_size, show_x_size]                     # setting default reveal size
 
     try:
         winLength = int(setWinLength)
@@ -101,6 +105,9 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     await UpdateGameVisualSettings(Xsign, Osign, emptySpot, isFogOfWar, serverID)
     await AddGamePlayers(ctx, playerID, serverID)
     await PrintGrid(ctx, serverID, grid)
+
+    print(await ShowTime() + f"Game started at ({serverID}) SERVER with ({x_size}x{y_size}) SIZE and ({winLength}) WINLENGTH")
+
     return
 
 
@@ -179,6 +186,9 @@ async def StopGame(ctx):
     serverID = ctx.guild.id
     await RemoveGame(serverID)
     await ctx.send("Game stopped.")
+
+    print(await ShowTime() + f"Game stopped at ({serverID}) SERVER")
+
     return
 
 
@@ -207,6 +217,9 @@ async def SwitchGamePlayers(ctx):
     gamePlayers[serverID] = players
     await UpdateGameTurn(turn, serverID)
     await ctx.send("You have switched sides successfully")
+
+    print(await ShowTime() + f"Players switched at ({serverID}) SERVER")
+
     return
 
 
@@ -542,11 +555,13 @@ async def AddGamePlayers(ctx, playerID, serverID):
         players[1] = playerID
         gamePlayers[serverID] = players
         await ctx.send("You have registered for a game.")
+        print(await ShowTime() + f"Second ({playerID}) PLAYER registered at ({serverID}) SERVER")
     except:
         players = [None] * 2
         players[0] = playerID
         gamePlayers[serverID] = players
         await ctx.send("You have registered for a game.")
+        print(await ShowTime() + f"First ({playerID}) PLAYER registered at ({serverID}) SERVER")
     
     return
 
@@ -568,6 +583,10 @@ async def RemoveGame(serverID):
     gameTurns.pop(serverID)
     gamePlayers.pop(serverID)
     return
+
+
+async def ShowTime():
+    return ("[" + dt.datetime.now().strftime("%x %X") + "] ")
 
 
 bot.run(TOKEN)
