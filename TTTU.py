@@ -48,6 +48,53 @@ async def on_guild_join(guild):                                                 
     return
 
 
+@bot.slash_command(name = "help")
+async def Help(ctx):
+    helpEmbed = discord.Embed(                                              # this syntax triggers my whole human being
+        title = "__Commands__",
+        color = discord.Color.magenta())
+    
+    helpEmbed.add_field(
+        name = "//start",
+        value = "Starts new game.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//set",
+        value = "Places your sign on field.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//register",
+        value = "Registers you for started game.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//stop",
+        value = "Stops current game.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//switch",
+        value = "Switches sides of registered people once per game.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//settings",
+        value = "Shows settings for current server.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "//setup",
+        value = "Lets you change settings.",
+        inline = False)
+    helpEmbed.add_field(
+        name = "",
+        value = "",
+        inline = False)
+    helpEmbed.add_field(
+        name = "Github link:",
+        value = "https://github.com/DixieCyanide/TicTacToeUltimate",
+        inline = False)
+
+    await ctx.respond(embed = helpEmbed)
+    return
+
+
 @bot.command(name = "start")
 async def StartGame(ctx, size = None, setWinLength:int = None):
     global gameStates
