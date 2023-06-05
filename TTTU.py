@@ -1,5 +1,6 @@
 import math
 import discord
+from discord import Option
 from discord.ext import commands
 import datetime as dt
 import sql
@@ -18,7 +19,10 @@ import sql
 # TODO: 11) optimize win detection (#4) ???
 # TODO: 12) switch sides (sponge#4716) - DONE
 # TODO: 13) console debug - partially done
-# TODO: 14) slash commands
+# TODO: 14) slash commands - DONE
+# TODO: 15) help command - DONE
+# TODO: 16) restore default values command - DONE
+# TODO: 17) make both slash and prefix commands (only slash commands now)
 
 TOKEN = ""
 prefix = "//"
@@ -48,9 +52,10 @@ async def on_guild_join(guild):                                                 
     return
 
 
-@bot.slash_command(name = "help")
+@bot.slash_command(name = "help", description = "Help.")
 async def Help(ctx):
-    helpEmbed = discord.Embed(                                              # this syntax triggers my whole human being
+
+    helpEmbed = discord.Embed(                                                  # this syntax triggers my whole human being
         title = "__Commands__",
         color = discord.Color.magenta())
     
@@ -83,6 +88,10 @@ async def Help(ctx):
         value = "Lets you change settings.",
         inline = False)
     helpEmbed.add_field(
+        name = "//reset",
+        value = "Resets server settings to default ones.",
+        inline = False)
+    helpEmbed.add_field(
         name = "",
         value = "",
         inline = False)
@@ -95,8 +104,13 @@ async def Help(ctx):
     return
 
 
-@bot.command(name = "start")
-async def StartGame(ctx, size = None, setWinLength:int = None):
+@bot.slash_command(name = "start", description = "Starts new game.")
+async def StartGame(
+        ctx,
+        size:         Option(str, description = "Field size",           required = False),
+        setwinlength: Option(int, description = "Size of winning line", required = False)
+        ):
+    
     global gameStates
     global gameSettings
     global gameFogOfWar
@@ -108,7 +122,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     grid = []
     serverSettings = await GetServerSettings(serverID)
     default_size = serverSettings[0]
-    default_win_length = serverSettings[1]                     # grabbing default settings from sql
+    default_win_length = serverSettings[1]                                      # grabbing default settings from sql
     isFogOfWar = serverSettings[2]
     Xsign = serverSettings[3]
     Osign = serverSettings[4]
@@ -123,7 +137,7 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
         gameFogOfWar[serverID] = [show_x_size, show_x_size]                     # setting default reveal size
 
     try:
-        winLength = int(setWinLength)
+        winLength = int(setwinlength)
     except:
         winLength = default_win_length
 
@@ -158,8 +172,13 @@ async def StartGame(ctx, size = None, setWinLength:int = None):
     return
 
 
-@bot.command(name = "set")
-async def GameTurn(ctx, *, coords = None):
+@bot.slash_command(name = "set", description = "Places sign.")
+async def GameTurn(
+        ctx,
+        x: Option(int, description = "Select row",    required = True, min_value = 1, max_value = 40),
+        y: Option(int, description = "Select column", required = True, min_value = 1, max_value = 40)
+        ):
+    
     playerID = ctx.author.id
     serverID = ctx.guild.id
     
@@ -169,27 +188,26 @@ async def GameTurn(ctx, *, coords = None):
         turn = gameTurns[serverID]
         isFogOfWar = gameVisualSettings[serverID][3]
     except:
-        await ctx.send("Game is not started yet.")
+        await ctx.respond("Game is not started yet.")
         return
 
     if(playerID != players[0] and playerID != players[1]):
-        await ctx.send("You are not registered for this game!")
+        await ctx.respond("You are not registered for this game!")
         return
 
     if(players[turn[0]] != playerID):
-        await ctx.send("This is not your turn!")
+        await ctx.respond("This is not your turn!")
         return
     
     try:
-        x, y = coords.split(" ")
         int(x)
         int(y)
     except:
-        await ctx.send("Type two coordinates please.")
-        return
+        await ctx.respond("Type two coordinates please.")
+        return                                                                  # TODO: probably useless now
 
     if(int(x) > len(grid) or int(y) > len(grid[0])):
-        await ctx.send("Out of bounds!")
+        await ctx.respond("Out of bounds!")
         return
     
     if(isFogOfWar):
@@ -213,7 +231,7 @@ async def GameTurn(ctx, *, coords = None):
     return
 
 
-@bot.command(name = "register")
+@bot.slash_command(name = "register", description = "Registers you for a game.")
 async def Registration(ctx):
     serverID = ctx.guild.id
     playerID = ctx.author.id
@@ -221,25 +239,24 @@ async def Registration(ctx):
     try:
         players = gamePlayers[serverID]
     except:
-        await ctx.send("Game is not started yet.")
+        await ctx.respond("Game is not started yet.")
         return
     
     await AddGamePlayers(ctx, playerID, serverID)
     return
 
 
-@bot.command(name = "stop")
+@bot.slash_command(name = "stop", description = "Stops current game.")
 async def StopGame(ctx):
     serverID = ctx.guild.id
     await RemoveGame(serverID)
-    await ctx.send("Game stopped.")
+    await ctx.respond("Game stopped.")
 
     print(await ShowTime() + f"Game stopped at ({serverID}) SERVER")
-
     return
 
 
-@bot.command(name = "switch")
+@bot.slash_command(name = "switch", description = "Switch sides.")
 async def SwitchGamePlayers(ctx):
     global gamePlayers
 
@@ -249,11 +266,11 @@ async def SwitchGamePlayers(ctx):
         isPossible = turn[1]
         players = gamePlayers[serverID]
     except:
-        await ctx.send("Game is not started yet.")
+        await ctx.respond("Game is not started yet.")
         return
 
     if(isPossible == 0):
-        await ctx.send("It's not possible to switch sides any more.")
+        await ctx.respond("It's not possible to switch sides any more.")
         return
     
     tempContainer = players[0]
@@ -263,14 +280,14 @@ async def SwitchGamePlayers(ctx):
     turn[1] = 0
     gamePlayers[serverID] = players
     await UpdateGameTurn(turn, serverID)
-    await ctx.send("You have switched sides successfully")
+    await ctx.respond("You have switched sides successfully")
 
     print(await ShowTime() + f"Players switched at ({serverID}) SERVER")
 
     return
 
 
-@bot.command(name = "settings")
+@bot.slash_command(name = "settings",description = "Shows settings.")
 async def ShowSettings(ctx):
     serverID = ctx.guild.id
 
@@ -295,9 +312,6 @@ async def ShowSettings(ctx):
         name = "Visual settings:",
         value = f"X sign: `{Xsign}` | O sign: `{Osign}` | Empty spot: `{emptySpot}`",
         inline = False)
-    #settingsEmbed.add_field(name = f"X sign: `{Xsign}`", value = "", inline = True)
-    #settingsEmbed.add_field(name = f"O sign: `{Osign}`", value = "", inline = True)
-    #settingsEmbed.add_field(name = f"Empty spot: `{emptySpot}`", value = "", inline = True)
     settingsEmbed.add_field(
         name = "Fog of war:",
         value = f"`{isFogOfWarText}`",
@@ -306,40 +320,44 @@ async def ShowSettings(ctx):
         name = "Default game settings:",
         value = f"Size: `{default_size}` | Win length: `{default_win_length}`",
         inline = False)
-    #settingsEmbed.add_field(name = f"Size: `{default_size}`", value = "", inline = True)
-    #settingsEmbed.add_field(name = f"Win length: `{default_win_length}`", value = "", inline = True)
-    await ctx.send(embed = settingsEmbed)                                       # lines above are looking awful
-    return                                                                      # * IDEA: I have idea how to change it and make code look more awful - DONE
+    await ctx.respond(embed = settingsEmbed)                                    
+    return                                                                      
 
 
-@bot.command(name = "setup")
-async def SettingsSetup(ctx, *, msg):
+@bot.slash_command(name = "setup", description = "Allows to change settings.")
+async def SettingsSetup(
+        ctx,
+        setting: Option(str, description = "Choose setting", required = True, choices = ["x", "o", "empty", "fog", "size", "length"]),
+        value:   Option(str, description = "Imput value",    required = True),
+        ):
+    
     serverID = ctx.guild.id
     
     try:
-        element, newValue = msg.split(" ")
+        element = setting
+        newValue = value
     except:
-        await ctx.send("You set values wrong!")
+        await ctx.respond("You set values wrong!")                              # TODO: useless
         return
     
     newValueLen = len(newValue)
 
     if(newValueLen > 5 or newValueLen < 1):
-        await ctx.send("New value's size is too big.")
+        await ctx.respond("New value's size is too big.")
         return
     elif(element != "size" and newValueLen != 1):
-        await ctx.send("New values can only be single-symbol.")
+        await ctx.respond("New values can only be single-symbol.")
         return
     elif(element == "length" and int(newValue) < 3):
-        await ctx.send("Win length is too small.")
+        await ctx.respond("Win length is too small.")
         return
     elif(element == "fog"):
         if(newValue != "1" and newValue != "0"):
-            ctx.send("New value can be only 0 or 1")
+            ctx.respond("New value can be only 0 or 1")
             return
     elif(element == "size"):
         if(newValueLen < 3):
-            await ctx.send("New value's size is too small")
+            await ctx.respond("New value's size is too small")
             return
         
         try:
@@ -347,17 +365,28 @@ async def SettingsSetup(ctx, *, msg):
             x = int(x)
             y = int(y)
             if(x > 40 or y > 40 or x < 3 or y < 3):
-                await ctx.send("Your values are out of bounds!")
+                await ctx.respond("Your values are out of bounds!")
                 return
         except:
-            await ctx.send("New value's syntax is wrong!")
+            await ctx.respond("New value's syntax is wrong!")
             return                                                              # many many exceptions... too many and i think it can be done more easily
     
     await UpdateServerSettings(element, newValue, serverID)
-    await ctx.send("Settings changed successfully.")
+    await ctx.respond("Settings changed successfully.")
     return
 
-    # TODO: command for default default settings
+
+@bot.slash_command(name = "reset", description = "Resets setting to default.")
+async def ResetToDefault(ctx):
+    serverID = ctx.guild.id
+    await UpdateServerSettings("x", "X", serverID)
+    await UpdateServerSettings("o", "O", serverID)
+    await UpdateServerSettings("empty", ".", serverID)
+    await UpdateServerSettings("fog", 0, serverID)
+    await UpdateServerSettings("size", "3x3", serverID)
+    await UpdateServerSettings("length", 3, serverID)
+    await ctx.respond("Default settings restored.")
+    return
 
 
 async def PrintGrid(ctx, serverID, grid):
@@ -379,7 +408,7 @@ async def PrintGrid(ctx, serverID, grid):
             output.append(gridLine)
     
     output = "".join(output)
-    await ctx.send("```\n" + output + "\n```")
+    await ctx.respond("```\n" + output + "\n```")
     return
 
 
@@ -394,7 +423,7 @@ async def ChangeState(ctx, x, y, serverID):
     emptySpot = visualSettings[2]
 
     if(cell != emptySpot):
-        await ctx.send("This spot is already taken, choose another one please.")
+        await ctx.respond("This spot is already taken, choose another one please.")
         return
     
     if(turn[0] == 0):
@@ -594,20 +623,20 @@ async def AddGamePlayers(ctx, playerID, serverID):
     try:
         players = gamePlayers[serverID]
         if(playerID == players[0]):
-            await ctx.send("You are already registered for this game.")
+            await ctx.respond("You are already registered for this game.")
             return
         elif(playerID == players[1]):
-            await ctx.send("Game is full already!")
+            await ctx.respond("Game is full already!")
             return
         players[1] = playerID
         gamePlayers[serverID] = players
-        await ctx.send("You have registered for a game.")
+        await ctx.respond("You have registered for a game.")
         print(await ShowTime() + f"Second ({playerID}) PLAYER registered at ({serverID}) SERVER")
     except:
         players = [None] * 2
         players[0] = playerID
         gamePlayers[serverID] = players
-        await ctx.send("You have registered for a game.")
+        await ctx.respond("You have registered for a game.")
         print(await ShowTime() + f"First ({playerID}) PLAYER registered at ({serverID}) SERVER")
     
     return
