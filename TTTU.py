@@ -22,7 +22,7 @@ import sql
 # TODO: 14) slash commands - DONE
 # TODO: 15) help command - DONE
 # TODO: 16) restore default values command - DONE
-# TODO: 17) make both slash and prefix commands (only slash commands now)
+# TODO: 17) make both slash and prefix commands - DONE
 
 TOKEN = ""
 prefix = "//"
@@ -31,7 +31,11 @@ intents = discord.Intents.default()                                             
 intents.message_content = True
 intents.messages = True
 
-bot = commands.Bot(command_prefix = prefix, intents = intents)
+bot = commands.Bot(
+    command_prefix = prefix, 
+    intents = intents, 
+    help_command = None
+    )                    
 
 show_x_size = 3                                                                 # default values for first turn with fogofwar
 show_y_size = 3                                                                 # for fogofwar
@@ -105,11 +109,16 @@ async def Help(ctx):
 
 
 @bot.slash_command(name = "start", description = "Starts new game.")
-async def StartGame(
+async def SlashStartGame(
         ctx,
         size:         Option(str, description = "Field size",           required = False),
         setwinlength: Option(int, description = "Size of winning line", required = False)
         ):
+    await StartGame(ctx, size, setwinlength)
+
+
+@bot.command(name = "start", description = "Starts new game.")
+async def StartGame(ctx, size: str, setwinlength: int):
     
     global gameStates
     global gameSettings
@@ -173,11 +182,15 @@ async def StartGame(
 
 
 @bot.slash_command(name = "set", description = "Places sign.")
-async def GameTurn(
-        ctx,
+async def SlashGameTurn(ctx, 
         x: Option(int, description = "Select row",    required = True, min_value = 1, max_value = 40),
         y: Option(int, description = "Select column", required = True, min_value = 1, max_value = 40)
         ):
+    await GameTurn(ctx, x, y)
+
+
+@bot.command(name = "set", description = "Places sign.")
+async def GameTurn(ctx, x: int, y: int):
     
     playerID = ctx.author.id
     serverID = ctx.guild.id
@@ -232,6 +245,11 @@ async def GameTurn(
 
 
 @bot.slash_command(name = "register", description = "Registers you for a game.")
+async def SlashRegistration(ctx):
+    await Registration(ctx)
+
+
+@bot.command(name = "register", description = "Registers you for a game.")
 async def Registration(ctx):
     serverID = ctx.guild.id
     playerID = ctx.author.id
@@ -247,16 +265,24 @@ async def Registration(ctx):
 
 
 @bot.slash_command(name = "stop", description = "Stops current game.")
+async def SlashStopGame(ctx):
+    await StopGame(ctx)
+
+
+@bot.command(name = "stop", description = "Stops current game.")
 async def StopGame(ctx):
     serverID = ctx.guild.id
     await RemoveGame(serverID)
     await ctx.respond("Game stopped.")
-
-    print(await ShowTime() + f"Game stopped at ({serverID}) SERVER")
     return
 
 
 @bot.slash_command(name = "switch", description = "Switch sides.")
+async def SlashSwitchGamePlayers(ctx):
+    await SwitchGamePlayers(ctx)
+
+
+@bot.command(name = "switch", description = "Switch sides.")
 async def SwitchGamePlayers(ctx):
     global gamePlayers
 
@@ -288,6 +314,11 @@ async def SwitchGamePlayers(ctx):
 
 
 @bot.slash_command(name = "settings",description = "Shows settings.")
+async def SlashShowSettings(ctx):
+    await ShowSettings(ctx)
+
+
+@bot.command(name = "settings",description = "Shows settings.")
 async def ShowSettings(ctx):
     serverID = ctx.guild.id
 
@@ -325,19 +356,23 @@ async def ShowSettings(ctx):
 
 
 @bot.slash_command(name = "setup", description = "Allows to change settings.")
-async def SettingsSetup(
+async def SlashSettingsSetup(
         ctx,
         setting: Option(str, description = "Choose setting", required = True, choices = ["x", "o", "empty", "fog", "size", "length"]),
         value:   Option(str, description = "Imput value",    required = True),
         ):
-    
+    await SettingsSetup(ctx, setting, value)
+
+
+@bot.command(name = "setup", description = "Allows to change settings.")
+async def SettingsSetup(ctx, setting: str, value: str):
     serverID = ctx.guild.id
     
     try:
         element = setting
         newValue = value
     except:
-        await ctx.respond("You set values wrong!")                              # TODO: useless
+        await ctx.respond("You set values wrong!")                              
         return
     
     newValueLen = len(newValue)
@@ -377,6 +412,11 @@ async def SettingsSetup(
 
 
 @bot.slash_command(name = "reset", description = "Resets setting to default.")
+async def SlashResetToDefault(ctx):
+    await ResetToDefault(ctx)
+
+
+@bot.command(name = "reset", description = "Resets setting to default.")
 async def ResetToDefault(ctx):
     serverID = ctx.guild.id
     await UpdateServerSettings("x", "X", serverID)
@@ -658,6 +698,7 @@ async def RemoveGame(serverID):
     gameVisualSettings.pop(serverID)
     gameTurns.pop(serverID)
     gamePlayers.pop(serverID)
+    print(await ShowTime() + f"Game stopped at ({serverID}) SERVER")
     return
 
 
