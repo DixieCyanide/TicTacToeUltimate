@@ -51,7 +51,7 @@ gamePlayers = {}                                                                
 @bot.event
 async def on_guild_join(guild):                                                 # adds new server to database
     serverID = guild.id
-    sql.CreateRow(serverID)
+    sql.CreateSettingsRow(serverID)
     print(f"Added new server ({serverID}).")
     return
 
