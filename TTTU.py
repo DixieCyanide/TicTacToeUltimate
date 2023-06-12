@@ -1,7 +1,7 @@
 import math
 import discord
 from discord import Option
-from discord.ext import commands
+from discord.ext import bridge
 import datetime as dt
 import sql
 
@@ -31,7 +31,7 @@ intents = discord.Intents.default()                                             
 intents.message_content = True
 intents.messages = True
 
-bot = commands.Bot(
+bot = bridge.Bot(
     command_prefix = prefix, 
     intents = intents, 
     help_command = None
@@ -57,6 +57,11 @@ async def on_guild_join(guild):                                                 
 
 
 @bot.slash_command(name = "help", description = "Help.")
+async def SlashHelp(ctx):
+    await Help(ctx)
+
+
+@bot.command(name = "help", description = "Help.")
 async def Help(ctx):
 
     helpEmbed = discord.Embed(                                                  # this syntax triggers my whole human being
@@ -118,7 +123,7 @@ async def SlashStartGame(
 
 
 @bot.command(name = "start", description = "Starts new game.")
-async def StartGame(ctx, size: str, setwinlength: int):
+async def StartGame(ctx, size = None, setwinlength = None):
     
     global gameStates
     global gameSettings
@@ -190,7 +195,7 @@ async def SlashGameTurn(ctx,
 
 
 @bot.command(name = "set", description = "Places sign.")
-async def GameTurn(ctx, x: int, y: int):
+async def GameTurn(ctx, x = None, y = None):
     
     playerID = ctx.author.id
     serverID = ctx.guild.id
@@ -365,20 +370,20 @@ async def SlashSettingsSetup(
 
 
 @bot.command(name = "setup", description = "Allows to change settings.")
-async def SettingsSetup(ctx, setting: str, value: str):
+async def SettingsSetup(ctx, setting: str = None, value: str = None):
     serverID = ctx.guild.id
     
-    try:
-        element = setting
-        newValue = value
-    except:
+    if(setting != None and value != None):
+        element = str(setting)
+        newValue = str(value)
+    else:
         await ctx.respond("You set values wrong!")                              
         return
     
     newValueLen = len(newValue)
 
     if(newValueLen > 5 or newValueLen < 1):
-        await ctx.respond("New value's size is too big.")
+        await ctx.respond("New value's size is out of bounds.")
         return
     elif(element != "size" and newValueLen != 1):
         await ctx.respond("New values can only be single-symbol.")
